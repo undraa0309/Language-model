@@ -3,71 +3,58 @@
 
 # In[1]:
 
-
 import torch
-import torch.nn.functional as F
-from model import VanillaRNN, LSTM
-from dataset import TextDataset
+from model import CharRNN, CharLSTM
+from dataset import char_tensor, all_characters
+import argparse
 
-def generate_text(model, start_char, char_to_idx, idx_to_char, hidden, length, temperature):
+def generate(model, seed_characters, temperature=1.0, predict_len=100):
     model.eval()
-    input_char = torch.tensor([char_to_idx[start_char]]).unsqueeze(0).to(next(model.parameters()).device)
-    generated_text = start_char
+    hidden = model.init_hidden(1).to(next(model.parameters()).device)
+    seed_input = char_tensor(seed_characters).unsqueeze(0).to(next(model.parameters()).device)
+    predicted = seed_characters
 
-    for _ in range(length):
-        if isinstance(model, VanillaRNN):
-            output, hidden = model(input_char, hidden)
-        else:
-            hidden, cell = hidden
-            output, hidden, cell = model(input_char, hidden, cell)
-            hidden = (hidden, cell)
+    with torch.no_grad():
+        for c in seed_input.squeeze(0):
+            _, hidden = model(c.unsqueeze(0).unsqueeze(0), hidden)
 
-        output = output.squeeze().div(temperature).exp()
-        probabilities = F.softmax(output, dim=0)
-        top_i = torch.multinomial(probabilities, 1)[0]
-        char = idx_to_char[top_i.item()]
+        inp = seed_input[:, -1]
 
-        generated_text += char
-        input_char = torch.tensor([top_i.item()]).unsqueeze(0).to(next(model.parameters()).device)
+        for _ in range(predict_len):
+            output, hidden = model(inp.unsqueeze(0), hidden)
+            output_dist = output.data.view(-1).div(temperature).exp()
+            top_i = torch.multinomial(output_dist, 1)[0]
+            predicted_char = all_characters[top_i]
+            predicted += predicted_char
+            inp = char_tensor(predicted_char).unsqueeze(0).to(next(model.parameters()).device)
 
-    return generated_text
-
-def main():
-    # Load model
-    model_path = 'best_model.pth'
-    model_type = 'LSTM'  # or 'VanillaRNN'
-    hidden_size = 128
-    num_layers = 2
-
-    with open('shakespeare.txt', 'r') as f:
-        text = f.read()
-
-    dataset = TextDataset(text, seq_length=100)
-    vocab_size = dataset.vocab_size
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    if model_type == 'LSTM':
-        model = LSTM(vocab_size, hidden_size, num_layers).to(device)
-        hidden = (torch.zeros(num_layers, 1, hidden_size).to(device),
-                  torch.zeros(num_layers, 1, hidden_size).to(device))
-    else:
-        model = VanillaRNN(vocab_size, hidden_size, num_layers).to(device)
-        hidden = torch.zeros(num_layers, 1, hidden_size).to(device)
-
-    model.load_state_dict(torch.load(model_path))
-
-    # Generate text
-    seed_chars = ['H', 'T', 'W', 'A', 'S']
-    for seed_char in seed_chars:
-        for temp in [0.5, 1.0, 1.5]:
-            generated_text = generate_text(model, seed_char, dataset.char_to_idx, dataset.idx_to_char, hidden, length=100, temperature=temp)
-            print(f'Seed: {seed_char}, Temp: {temp}\n{generated_text}\n')
+    return predicted
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Generate text using a trained RNN/LSTM model.')
+    parser.add_argument('--model', type=str, required=True, help='Path to the trained model file')
+    parser.add_argument('--seed', type=str, required=True, help='Seed characters to start the generation')
+    parser.add_argument('--temperature', type=float, default=1.0, help='Temperature parameter for softmax')
+    parser.add_argument('--length', type=int, default=100, help='Length of text to generate')
+    parser.add_argument('--model_type', type=str, choices=['RNN', 'LSTM'], default='LSTM', help='Type of model to use')
+    args = parser.parse_args()
 
+    checkpoint = torch.load(args.model)
+    model_type = checkpoint['model_type']
+    hidden_size = checkpoint['n_hidden']
+    n_layers = checkpoint['n_layers']
+    chars = checkpoint['tokens']
 
-# In[ ]:
+    if model_type == 'LSTM':
+        model = CharLSTM(len(chars), hidden_size, n_layers)
+    else:
+        model = CharRNN(len(chars), hidden_size, n_layers)
+
+    model.load_state_dict(checkpoint['state_dict'])
+    model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+
+    samples = generate(model, args.seed, args.temperature, args.length)
+    print(samples)
 
 
 
