@@ -3,33 +3,26 @@
 
 # In[ ]:
 
-
-import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
-class TextDataset(Dataset):
-    def __init__(self, text, seq_length):
-        self.text = text
+class Shakespeare(Dataset):
+    def __init__(self, input_file):
+        with open(input_file, 'r') as f:
+            text = f.read()
+        
         self.chars = sorted(list(set(text)))
-        self.char_to_idx = {ch: i for i, ch in enumerate(self.chars)}
-        self.idx_to_char = {i: ch for i, ch in enumerate(self.chars)}
-        self.seq_length = seq_length
-        self.vocab_size = len(self.chars)
-        self.data = self.preprocess()
-
-    def preprocess(self):
-        return [self.char_to_idx[ch] for ch in self.text]
-
+        self.char2idx = {ch: i for i, ch in enumerate(self.chars)}
+        self.idx2char = {i: ch for i, ch in enumerate(self.chars)}
+        self.data = [self.char2idx[ch] for ch in text]
+        self.seq_length = 30
+    
     def __len__(self):
         return len(self.data) - self.seq_length
-
+    
     def __getitem__(self, idx):
-        seq = self.data[idx:idx+self.seq_length]
-        target = self.data[idx+1:idx+self.seq_length+1]
-        return torch.tensor(seq), torch.tensor(target)
+        input_seq = self.data[idx:idx + self.seq_length]
+        target_seq = self.data[idx + 1:idx + self.seq_length + 1]
+        return torch.tensor(input_seq), torch.tensor(target_seq)
 
-def create_dataloader(text, seq_length, batch_size):
-    dataset = TextDataset(text, seq_length)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
