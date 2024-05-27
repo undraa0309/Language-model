@@ -12,7 +12,8 @@
 ## 훈련 및 검증 손실
 다음 그래프는 Vanilla RNN 및 LSTM 모델의 훈련 손실을 나타냅니다:
 
-![Uploading image.png…]()
+![image](https://github.com/undraa0309/Language-model/assets/133347765/20c75bfd-8ff0-490e-bf36-46d19f20cf9e)
+
 
 
 ## 텍스트 생성
