@@ -8,25 +8,28 @@ from model import CharRNN, CharLSTM
 from dataset import char_tensor, all_characters
 import argparse
 
-def generate(model, seed_characters, temperature=1.0, predict_len=100):
+def evaluate(model, prime_str='A', predict_len=100, temperature=0.8):
     model.eval()
-    hidden = model.init_hidden(1).to(next(model.parameters()).device)
-    seed_input = char_tensor(seed_characters).unsqueeze(0).to(next(model.parameters()).device)
-    predicted = seed_characters
+    hidden = model.init_hidden()
+    prime_input = char_tensor(prime_str)
+    predicted = prime_str
 
-    with torch.no_grad():
-        for c in seed_input.squeeze(0):
-            _, hidden = model(c.unsqueeze(0).unsqueeze(0), hidden)
+    # Use priming string to "build up" hidden state
+    for p in range(len(prime_str) - 1):
+        _, hidden = model(prime_input[p], hidden)
+    inp = prime_input[-1]
 
-        inp = seed_input[:, -1]
+    for p in range(predict_len):
+        output, hidden = model(inp, hidden)
 
-        for _ in range(predict_len):
-            output, hidden = model(inp.unsqueeze(0), hidden)
-            output_dist = output.data.view(-1).div(temperature).exp()
-            top_i = torch.multinomial(output_dist, 1)[0]
-            predicted_char = all_characters[top_i]
-            predicted += predicted_char
-            inp = char_tensor(predicted_char).unsqueeze(0).to(next(model.parameters()).device)
+        # Sample from the network as a multinomial distribution
+        output_dist = output.data.view(-1).div(temperature).exp()
+        top_i = torch.multinomial(output_dist, 1)[0]
+
+        # Add predicted character to string and use as next input
+        predicted_char = all_characters[top_i]
+        predicted += predicted_char
+        inp = char_tensor(predicted_char)
 
     return predicted
 
